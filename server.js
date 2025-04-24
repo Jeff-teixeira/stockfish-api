@@ -6,10 +6,104 @@ const port = process.env.PORT || 8080;
 
 // Constantes do servidor
 const maxEngines = process.env.MAX_ENGINES || 4;
-const defaultDepth = process.env.DEFAULT_DEPTH || 25; // Aumentado para maior força
+const defaultDepth = process.env.DEFAULT_DEPTH || 30; // Profundidade de análise
 const defaultMultiPv = process.env.DEFAULT_MULTI_PV || 1;
 const maxTimeLimit = process.env.MAX_TIME_LIMIT || 30000;
-const stockfishPath = process.env.STOCKFISH_PATH || './stockfish';
+const stockfishPath = process.env.STOCKFISH_PATH || '/usr/local/bin/stockfish';
+
+// Configurações do Stockfish
+const DEFAULT_DEPTH = process.env.DEFAULT_DEPTH ? parseInt(process.env.DEFAULT_DEPTH) : 30;
+const MAX_DEPTH = 35; // Profundidade máxima
+const DEFAULT_THREADS = process.env.STOCKFISH_THREADS ? parseInt(process.env.STOCKFISH_THREADS) : 4;
+const HASH_SIZE = process.env.STOCKFISH_HASH ? parseInt(process.env.STOCKFISH_HASH) : 1024;
+
+// Configurações para comportamento mais humano
+const HUMAN_SIMULATION = {
+  // Configurações por nível de habilidade
+  skillLevels: {
+    // Nível muito fácil (1-8)
+    beginner: {
+      minDepth: 8,
+      maxDepth: 12,
+      skillLevel: 8,
+      errorRate: 0.35, // 35% de chance de erro
+      minTime: 800,
+      maxTime: 2000,
+    },
+    // Nível médio (9-15)
+    intermediate: {
+      minDepth: 15,
+      maxDepth: 20,
+      skillLevel: 14,
+      errorRate: 0.15, // 15% de chance de erro
+      minTime: 1500,
+      maxTime: 4000,
+    },
+    // Nível difícil (16-22)
+    advanced: {
+      minDepth: 20,
+      maxDepth: 25,
+      skillLevel: 20,
+      errorRate: 0.05, // 5% de chance de erro
+      minTime: 2000,
+      maxTime: 5000,
+    },
+    // Nível muito difícil (23-28)
+    expert: {
+      minDepth: 25,
+      maxDepth: 30,
+      skillLevel: 25,
+      errorRate: 0.01, // 1% de chance de erro
+      minTime: 3000,
+      maxTime: 6000,
+    },
+    // Nível impossível (29-30)
+    master: {
+      minDepth: 30,
+      maxDepth: 35,
+      skillLevel: 30,
+      errorRate: 0.0, // Sem erros
+      minTime: 3500,
+      maxTime: 7000,
+    }
+  },
+  
+  // Obter configuração para um nível de habilidade
+  getConfigForSkill: function(skillLevel) {
+    if (skillLevel <= 8) {
+      return this.skillLevels.beginner;
+    } else if (skillLevel <= 15) {
+      return this.skillLevels.intermediate;
+    } else if (skillLevel <= 22) {
+      return this.skillLevels.advanced;
+    } else if (skillLevel <= 28) {
+      return this.skillLevels.expert;
+    } else {
+      return this.skillLevels.master;
+    }
+  },
+  
+  // Determinar se deve cometer um erro
+  shouldMakeError: function(skillLevel) {
+    const config = this.getConfigForSkill(skillLevel);
+    return Math.random() < config.errorRate;
+  },
+  
+  // Simular tempo de pensamento humano
+  getThinkingTime: function(skillLevel, positionComplexity = 0.5) {
+    const config = this.getConfigForSkill(skillLevel);
+    
+    // Base time + random variation
+    const baseTime = config.minTime;
+    const maxVariation = config.maxTime - config.minTime;
+    
+    // Complexity factor (0.7-1.3)
+    const complexityFactor = 0.7 + (positionComplexity * 0.6);
+    
+    // Calculate thinking time
+    return Math.floor((baseTime + (Math.random() * maxVariation)) * complexityFactor);
+  }
+};
 
 app.use(cors());
 app.use(express.json());
@@ -30,7 +124,7 @@ function createStockfishInstance() {
     // Configurar o motor para máxima força
     engine.stdin.write('uci\n');
     engine.stdin.write(`setoption name Threads value ${process.env.STOCKFISH_THREADS || 4}\n`);
-    engine.stdin.write(`setoption name Hash value ${process.env.STOCKFISH_HASH || 512}\n`);
+    engine.stdin.write(`setoption name Hash value ${process.env.STOCKFISH_HASH || 1024}\n`);
     engine.stdin.write('setoption name UCI_LimitStrength value false\n');
     engine.stdin.write('setoption name Skill Level value 20\n');
     engine.stdin.write('setoption name Use NNUE value true\n');
@@ -89,20 +183,77 @@ for (let i = 0; i < maxEngines; i++) {
   }
 }
 
+// Estimativa da complexidade da posição (0-1)
+function estimatePositionComplexity(fen) {
+  try {
+    // Parsing básico da FEN para contar peças
+    const piecePlacement = fen.split(' ')[0];
+    const pieces = piecePlacement.replace(/\d+/g, match => ' '.repeat(parseInt(match))).replace(/\//g, '');
+    
+    // Contar peças
+    const pieceCount = pieces.trim().length;
+    
+    // Contagem de tipos de peças
+    const uniquePieces = new Set(pieces.split(''));
+    const uniquePieceCount = uniquePieces.size;
+    
+    // Posição mais complexa tem muitas peças diferentes
+    const complexity = Math.min(1, (pieceCount / 32) * 0.7 + (uniquePieceCount / 12) * 0.3);
+    
+    return complexity;
+  } catch (e) {
+    console.error('Erro ao estimar complexidade:', e);
+    return 0.5; // Valor médio em caso de erro
+  }
+}
+
+// Função para selecionar um movimento sub-ótimo (para simular erro humano)
+function selectSuboptimalMove(bestMove, analysis, skillLevel) {
+  if (!analysis || analysis.length <= 1) {
+    return bestMove;
+  }
+  
+  // Para níveis de habilidade mais baixos, considerar movimentos piores
+  const config = HUMAN_SIMULATION.getConfigForSkill(skillLevel);
+  
+  // Movimentos alternativos do MultiPV
+  const alternativeMoves = analysis.slice(1);
+  
+  // Quanto menor o skillLevel, maior a chance de escolher movimentos piores
+  const randomIndex = Math.floor(Math.random() * Math.min(alternativeMoves.length, Math.max(2, Math.floor(20 / skillLevel))));
+  
+  // Escolher um movimento alternativo
+  if (alternativeMoves[randomIndex] && alternativeMoves[randomIndex].pv && alternativeMoves[randomIndex].pv.length > 0) {
+    console.log(`Simulando erro humano: escolhendo movimento alternativo (${randomIndex + 1}) em vez do melhor movimento`);
+    return { move: alternativeMoves[randomIndex].pv[0], ponder: alternativeMoves[randomIndex].pv[1] || null };
+  }
+  
+  return bestMove;
+}
+
 // Rota para obter o melhor movimento
 app.post('/api/bestmove', async (req, res) => {
   try {
-    const { fen, depth = defaultDepth, multiPv = defaultMultiPv, timeLimit } = req.body;
+    const { fen, depth = defaultDepth, multiPv = defaultMultiPv, timeLimit, skillLevel = 20 } = req.body;
     
     // Validar entrada
     if (!fen) {
       return res.status(400).json({ error: 'Posição FEN é obrigatória' });
     }
     
+    // Configuração baseada no nível de habilidade humano
+    const humanConfig = HUMAN_SIMULATION.getConfigForSkill(skillLevel);
+    
     // Validar limites
-    const actualDepth = Math.min(Math.max(1, parseInt(depth)), 30);
-    const actualMultiPv = Math.min(Math.max(1, parseInt(multiPv)), 5);
-    const actualTimeLimit = timeLimit ? Math.min(parseInt(timeLimit), maxTimeLimit) : null;
+    const actualDepth = Math.min(Math.max(humanConfig.minDepth, parseInt(depth)), humanConfig.maxDepth);
+    const actualMultiPv = Math.min(Math.max(3, parseInt(multiPv)), 5); // Sempre usar MultiPV para ter alternativas
+    
+    // Calcular tempo baseado na complexidade da posição e nível de habilidade
+    const positionComplexity = estimatePositionComplexity(fen);
+    const thinkingTime = HUMAN_SIMULATION.getThinkingTime(skillLevel, positionComplexity);
+    const actualTimeLimit = timeLimit ? Math.min(parseInt(timeLimit), maxTimeLimit) : thinkingTime;
+    
+    console.log(`Calculando movimento para nível ${skillLevel}, profundidade ${actualDepth}, MultiPV ${actualMultiPv}, tempo ${actualTimeLimit}ms`);
     
     // Obter uma instância do engine
     let engineInstance = null;
@@ -131,6 +282,10 @@ app.post('/api/bestmove', async (req, res) => {
     // Garantir que o motor está pronto
     await engineInstance.isReady();
     
+    // Configurar o motor para o nível de habilidade apropriado
+    engineInstance.engine.stdin.write(`setoption name Skill Level value ${humanConfig.skillLevel}\n`);
+    engineInstance.engine.stdin.write(`setoption name UCI_LimitStrength value ${skillLevel < 30 ? 'true' : 'false'}\n`);
+    
     // Obter o melhor movimento
     const result = await getBestMove(
       engineInstance.engine,
@@ -146,6 +301,21 @@ app.post('/api/bestmove', async (req, res) => {
     // Reiniciar o tabuleiro
     engineInstance.engine.stdin.write('ucinewgame\n');
     engineInstance.engine.stdin.write('isready\n');
+    
+    // Verificar se devemos simular um erro humano
+    if (HUMAN_SIMULATION.shouldMakeError(skillLevel) && result.analysis && result.analysis.length > 1) {
+      const suboptimalMove = selectSuboptimalMove(result.bestMove, result.analysis, skillLevel);
+      result.bestMove = suboptimalMove;
+      result.isHumanError = true;
+    }
+    
+    // Adicionar informações sobre o comportamento humano simulado
+    result.humanSimulation = {
+      skillLevel,
+      thinkingTime: actualTimeLimit,
+      positionComplexity,
+      errorRate: humanConfig.errorRate
+    };
     
     return res.json(result);
   } catch (error) {
