@@ -47,7 +47,7 @@ ENV TZ=America/Sao_Paulo
 
 # Copiar arquivos da aplicação
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --production
 COPY . .
 
 # Verificar se o Stockfish está funcionando
