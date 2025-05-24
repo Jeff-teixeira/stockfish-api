@@ -409,8 +409,8 @@ function getBestMove(engine, fen, depth, multiPv, timeLimit) {
     engine.stdout.on('data', dataHandler);
 
     // Configurar a posição e iniciar análise
-    sendCommand('position fen ${fen}\n');
-    sendCommand('setoption name MultiPV value ${multiPv}\n');
+    engine.stdin.write(`position fen ${fen}\n`);
+    engine.stdin.write(`setoption name MultiPV value ${multiPv}\n`);
 
     // Mantém a lógica local de go movetime/depth
     if (timeLimit) {
