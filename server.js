@@ -9,7 +9,7 @@ const port = process.env.PORT || 8080;
 const maxEngines = process.env.MAX_ENGINES || 2; // Mantém o padrão local de 2 engines
 const defaultDepth = process.env.DEFAULT_DEPTH || 30; // Profundidade de análise
 const defaultMultiPv = process.env.DEFAULT_MULTI_PV || 1; // Mantém o padrão local de 1 MultiPV
-const maxTimeLimit = process.env.MAX_TIME_LIMIT || 5000; // Mantém o limite de tempo local de 5s
+const maxTimeLimit = process.env.MAX_TIME_LIMIT || 15000; // Aumentado para 15s para acomodar Render.com
 const stockfishPath = process.env.STOCKFISH_PATH || '/usr/local/bin/stockfish'; // Mantém o caminho local padrão
 
 console.log('Iniciando Stockfish API...');
@@ -262,7 +262,7 @@ app.post('/api/bestmove', async (req, res) => {
     const thinkingTime = HUMAN_SIMULATION.getThinkingTime(skillLevel, positionComplexity);
     const actualTimeLimit = timeLimit ? Math.min(parseInt(timeLimit), maxTimeLimit) : thinkingTime;
 
-    console.log(`Calculando movimento para nível ${skillLevel}, profundidade ${actualDepth}, MultiPV ${actualMultiPv}, tempo ${actualTimeLimit}ms`);
+    console.log(`Calculando movimento para nível ${skillLevel}, profundidade ${actualDepth}, MultiPV ${actualMultiPv}, tempo calculado ${thinkingTime}ms, tempo final usado ${actualTimeLimit}ms`);
 
     // Obter uma instância do engine
     let engineInstance = null;
