@@ -345,12 +345,19 @@ function getBestMove(engine, fen, depth, multiPv, timeLimit) {
     if (timeLimit) {
       timeout = setTimeout(() => {
         engine.stdin.write('stop\n');
-        console.log('Análise interrompida por tempo limite');
+        console.log('Análise interrompida por tempo limite Stockfish'); // Log mais específico
+        // Se o bestmove não chegou, podemos forçar uma falha aqui
+        if (bestMove === null) {
+          // Limpar o listener para evitar múltiplos resolves/rejects
+          engine.stdout.removeListener('data', dataHandler);
+          reject(new Error(`Stockfish não retornou bestmove dentro do tempo limite (${timeLimit}ms)`));
+        }
       }, timeLimit);
     }
 
     const dataHandler = (data) => {
       const text = data.toString();
+      console.log(`📥 Stockfish Output: ${text.trim()}`); // Log da saída do Stockfish
       output.push(text);
 
       // Capturar análise multipv
@@ -409,13 +416,17 @@ function getBestMove(engine, fen, depth, multiPv, timeLimit) {
     engine.stdout.on('data', dataHandler);
 
     // Configurar a posição e iniciar análise
+    console.log(`📤 Enviando para Stockfish: position fen ${fen}`); // Log do comando enviado
     engine.stdin.write(`position fen ${fen}\n`);
+    console.log(`📤 Enviando para Stockfish: setoption name MultiPV value ${multiPv}`); // Log do comando enviado
     engine.stdin.write(`setoption name MultiPV value ${multiPv}\n`);
 
     // Mantém a lógica local de go movetime/depth
     if (timeLimit) {
+      console.log(`📤 Enviando para Stockfish: go movetime ${timeLimit}`); // Log do comando enviado
       engine.stdin.write(`go movetime ${timeLimit}\n`);
     } else {
+      console.log(`📤 Enviando para Stockfish: go depth ${depth}`); // Log do comando enviado
       engine.stdin.write(`go depth ${depth}\n`);
     }
   });
