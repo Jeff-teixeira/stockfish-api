@@ -1,20 +1,21 @@
 const express = require('express');
 const cors = require('cors');
 const { spawn } = require('child_process');
-const fs = require('fs');
+const fs = require('fs'); // Mantém a importação local
 const app = express();
 const port = process.env.PORT || 8080;
 
 // Constantes do servidor
-const maxEngines = process.env.MAX_ENGINES || 2;
+const maxEngines = process.env.MAX_ENGINES || 2; // Mantém o padrão local de 2 engines
 const defaultDepth = process.env.DEFAULT_DEPTH || 30; // Profundidade de análise
-const defaultMultiPv = process.env.DEFAULT_MULTI_PV || 1;
-const maxTimeLimit = process.env.MAX_TIME_LIMIT || 5000;
-const stockfishPath = process.env.STOCKFISH_PATH || '/usr/local/bin/stockfish';
+const defaultMultiPv = process.env.DEFAULT_MULTI_PV || 1; // Mantém o padrão local de 1 MultiPV
+const maxTimeLimit = process.env.MAX_TIME_LIMIT || 5000; // Mantém o limite de tempo local de 5s
+const stockfishPath = process.env.STOCKFISH_PATH || '/usr/local/bin/stockfish'; // Mantém o caminho local padrão
 
 console.log('Iniciando Stockfish API...');
 console.log('Caminho do Stockfish:', stockfishPath);
 
+// Mantém a verificação de existência do binário local
 if (!fs.existsSync(stockfishPath)) {
   console.error('ERRO: Binário do Stockfish não encontrado em', stockfishPath);
 }
@@ -242,7 +243,7 @@ function selectSuboptimalMove(bestMove, analysis, skillLevel) {
 // Rota para obter o melhor movimento
 app.post('/api/bestmove', async (req, res) => {
   try {
-    const { fen, depth = defaultDepth, multiPv = 1, timeLimit, skillLevel = 20 } = req.body;
+    const { fen, depth = defaultDepth, multiPv = 1, timeLimit, skillLevel = 20 } = req.body; // Mantém multiPv=1 padrão
 
     // Validar entrada
     if (!fen) {
@@ -254,7 +255,7 @@ app.post('/api/bestmove', async (req, res) => {
 
     // Validar limites
     const actualDepth = Math.min(Math.max(humanConfig.minDepth, parseInt(depth)), humanConfig.maxDepth);
-    const actualMultiPv = Math.max(1, Math.min(parseInt(multiPv), 5));
+    const actualMultiPv = Math.max(1, Math.min(parseInt(multiPv), 5)); // Mantém a lógica local para MultiPV
 
     // Calcular tempo baseado na complexidade da posição e nível de habilidade
     const positionComplexity = estimatePositionComplexity(fen);
@@ -408,9 +409,10 @@ function getBestMove(engine, fen, depth, multiPv, timeLimit) {
     engine.stdout.on('data', dataHandler);
 
     // Configurar a posição e iniciar análise
-    engine.stdin.write(`position fen ${fen}\n`);
-    engine.stdin.write(`setoption name MultiPV value ${multiPv}\n`);
+    sendCommand('position fen ${fen}\n');
+    sendCommand('setoption name MultiPV value ${multiPv}\n');
 
+    // Mantém a lógica local de go movetime/depth
     if (timeLimit) {
       engine.stdin.write(`go movetime ${timeLimit}\n`);
     } else {
@@ -421,11 +423,11 @@ function getBestMove(engine, fen, depth, multiPv, timeLimit) {
 
 // Rota de saúde para healthcheck
 app.get('/health', (req, res) => {
-  let stockfishExists = fs.existsSync(stockfishPath);
+  let stockfishExists = fs.existsSync(stockfishPath); // Mantém a verificação local
   if (enginePool.length > 0 && stockfishExists) {
-    res.status(200).json({ status: 'ok', engines: enginePool.length, stockfishPath });
+    res.status(200).json({ status: 'ok', engines: enginePool.length, stockfishPath }); // Inclui o caminho
   } else {
-    res.status(500).json({ status: 'error', message: 'Nenhuma instância do Stockfish disponível ou binário não encontrado', stockfishPath });
+    res.status(500).json({ status: 'error', message: 'Nenhuma instância do Stockfish disponível ou binário não encontrado', stockfishPath }); // Inclui o caminho e mensagem
   }
 });
 
@@ -467,4 +469,4 @@ function gracefulShutdown() {
 const server = app.listen(port, () => {
   console.log(`Servidor rodando na porta ${port}`);
   console.log(`Stockfish inicializado com ${enginePool.length} instâncias`);
-}); 
+});
